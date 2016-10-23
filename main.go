@@ -41,6 +41,8 @@ func main() {
 		log.Fatal(err)
 	}
 
+	var paypalTransactions []SellwireTransaction
+
 	for _, record := range records {
 		status := record[SELLWIRE_TRANSACTION_COLUMN_STATUS]
 		if status != "complete" {
@@ -58,6 +60,10 @@ func main() {
 			CountryCode: record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_COUNTRY_CODE],
 			TaxNumber: record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX_NUMBER],
 		}
-		fmt.Print(sellwireRecord)
+
+		if !strings.HasPrefix(sellwireRecord.TransactionId, "ch_") {
+			paypalTransactions = append(paypalTransactions, sellwireRecord)
+			fmt.Print(sellwireRecord)
+		}
 	}
 }
