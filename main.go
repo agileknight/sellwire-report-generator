@@ -21,6 +21,12 @@ const (
 	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_COUNTRY_CODE=10
 	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX_NUMBER=11
 	PAYPAL_DATE_OUTPUT_FORMAT = "02.01.2006"
+
+type TransactionType string
+
+const (
+	TransactionTypePaypal TransactionType = "paypal"
+	TransactionTypeStripe TransactionType = "stripe"
 )
 
 type Amount struct {
@@ -29,6 +35,7 @@ type Amount struct {
 }
 
 type SellwireTransaction struct {
+	TransactionType TransactionType
 	TransactionId string
 	Timestamp time.Time
 	CustomerName string
@@ -40,18 +47,18 @@ type SellwireTransaction struct {
 }
 
 func main() {
-	file, err := os.Open("input/SellwireOrders_All_23_Feb_2016_30_Sep_2016.csv")
+	sellwireOrdersFile, err := os.Open("input/SellwireOrders_All_23_Feb_2016_30_Sep_2016.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
-	r := csv.NewReader(file)
+	r := csv.NewReader(sellwireOrdersFile)
 
 	records, err := r.ReadAll()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	var paypalTransactions []SellwireTransaction
+	var transactions []SellwireTransaction
 
 	for _, record := range records {
 		status := record[SELLWIRE_TRANSACTION_COLUMN_STATUS]
@@ -96,8 +103,16 @@ func main() {
 			}
 		}
 
+		transactionId := record[SELLWIRE_TRANSACTION_COLUMN_TRANSACTION_ID]
+
+		transactionType := TransactionTypePaypal
+		if strings.HasPrefix(transactionId, "ch_") {
+			transactionType = TransactionTypeStripe
+		}
+
 		sellwireRecord := SellwireTransaction{
-			TransactionId: record[SELLWIRE_TRANSACTION_COLUMN_TRANSACTION_ID],
+			TransactionType: transactionType,
+			TransactionId: transactionId,
 			Timestamp: timestamp,
 			CustomerName: strings.Title(strings.ToLower(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_NAME])),
 			Amount: amount,
@@ -107,16 +122,20 @@ func main() {
 			TaxNumber: taxNumber,
 		}
 
-		if !strings.HasPrefix(sellwireRecord.TransactionId, "ch_") {
-			paypalTransactions = append(paypalTransactions, sellwireRecord)
-		}
+		transactions = append(transactions, sellwireRecord)
 	}
+
+
 
 	paypalOutput := [][]string{
 		{"Datum", "Kundenname", "Betrag USD", "Land", "EU", "Privat", "USt-ID"},
 	}
 
-	for _, tx := range paypalTransactions {
+	for _, tx := range transactions {
+		if tx.TransactionType != TransactionTypePaypal {
+			continue
+		}
+
 		isEU := ""
 		if tx.IsEU {
 			isEU = "x"
