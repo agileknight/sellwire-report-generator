@@ -277,11 +277,55 @@ func outputPaypalTransactions() {
 	w.WriteAll(paypalOutput)
 
 	if err := w.Error(); err != nil {
-		log.Fatalln("error writing paypal output csv:", err)
+		log.Fatalln("error writing paypal output csv: %v", err)
 	}
 }
 
 func outputStripeTransactions() {
-	// TODO implement
-	fmt.Printf("%+v", stripeTransfersByTransactionId)
+	stripeOutput := [][]string{
+		{"Datum", "Kundenname", "Betrag USD", "Land", "EU", "Privat", "USt-ID", "Datum Transfer", "Gesamtbetrag Transfer EUR"},
+	}
+
+	for _, tx := range transactions {
+		if tx.TransactionType != TransactionTypeStripe {
+			continue
+		}
+
+		isEU := ""
+		if tx.IsEU {
+			isEU = "x"
+		}
+
+		isPrivate := ""
+		if tx.IsPrivate {
+			isPrivate = "x"
+		}
+
+		transfer := stripeTransfersByTransactionId[tx.TransactionId]
+
+		record := []string{
+			tx.Timestamp.Format(PAYPAL_DATE_OUTPUT_FORMAT),
+			tx.CustomerName,
+			fmt.Sprintf("%d,%02d",tx.Amount.Dollars, tx.Amount.Cents),
+			tx.CountryCode,
+			isEU,
+			isPrivate,
+			tx.TaxNumber,
+			transfer.Date.Format(PAYPAL_DATE_OUTPUT_FORMAT),
+			fmt.Sprintf("%d,%02d",transfer.Amount.Dollars, transfer.Amount.Cents),
+		}
+		stripeOutput = append(stripeOutput, record)
+	}
+
+	outputFile, err := os.Create("output/Stripe.csv")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	w := csv.NewWriter(outputFile)
+	w.WriteAll(stripeOutput)
+
+	if err := w.Error(); err != nil {
+		log.Fatalln("error writing stripe output csv: %v", err)
+	}
 }
