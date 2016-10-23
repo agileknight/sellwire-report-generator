@@ -46,7 +46,14 @@ type SellwireTransaction struct {
 	TaxNumber string
 }
 
+var transactions []SellwireTransaction
+
 func main() {
+	importSellwireTransactions()
+	outputPaypalTransactions()	
+}
+
+func importSellwireTransactions() {
 	sellwireOrdersFile, err := os.Open("input/SellwireOrders_All_23_Feb_2016_30_Sep_2016.csv")
 	if err != nil {
 		log.Fatal(err)
@@ -57,8 +64,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	var transactions []SellwireTransaction
 
 	for _, record := range records[1:] {
 		status := record[SELLWIRE_TRANSACTION_COLUMN_STATUS]
@@ -124,9 +129,9 @@ func main() {
 
 		transactions = append(transactions, sellwireRecord)
 	}
+}
 
-
-
+func outputPaypalTransactions() {
 	paypalOutput := [][]string{
 		{"Datum", "Kundenname", "Betrag USD", "Land", "EU", "Privat", "USt-ID"},
 	}
