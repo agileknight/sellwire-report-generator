@@ -20,11 +20,16 @@ const (
 	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX_NUMBER=11
 )
 
+type Amount struct {
+	Dollars int64
+	Cents int64
+}
+
 type SellwireTransaction struct {
 	TransactionId string
 	Date string
 	CustomerName string
-	Amount string
+	Amount Amount
 	IsEU bool
 	IsPrivate bool
 	CountryCode string
@@ -63,11 +68,33 @@ func main() {
 
 		isEU, _ := strconv.ParseBool(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_IS_EU])
 
+		var amount Amount
+		amountStr := record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_AMOUNT]
+		amountStrStripped := strings.Replace(amountStr, ",", "", -1)
+		amountParts := strings.Split(amountStrStripped, ".")
+		if len(amountParts) > 2 {
+			log.Fatalf("Invalid amount found: %s", amountStr)
+		}
+		if len(amountParts) > 0 {
+			dollars, err := strconv.ParseInt(amountParts[0], 10, 64)
+			if err != nil {
+				log.Fatal(err)
+			}
+			amount.Dollars = dollars
+			if len(amountParts) > 1 {
+				cents, err  := strconv.ParseInt(amountParts[1], 10, 64)
+				if err != nil {
+					log.Fatal(err)
+				}
+				amount.Cents = cents
+			}
+		}
+
 		sellwireRecord := SellwireTransaction{
 			TransactionId: record[SELLWIRE_TRANSACTION_COLUMN_TRANSACTION_ID],
 			Date: timestampParts[0],
-			CustomerName: record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_NAME],
-			Amount: record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_AMOUNT],
+			CustomerName: strings.Title(strings.ToLower(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_NAME])),
+			Amount: amount,
 			IsEU: isEU,
 			IsPrivate: taxNumber == "",
 			CountryCode: countryCode,
@@ -97,7 +124,7 @@ func main() {
 		record := []string{
 			tx.Date,
 			tx.CustomerName,
-			tx.Amount,
+			fmt.Sprintf("%d,%02d",tx.Amount.Dollars, tx.Amount.Cents),
 			tx.CountryCode,
 			isEU,
 			isPrivate,
