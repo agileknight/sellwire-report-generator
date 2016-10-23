@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/csv"
+	"fmt"
+	"strconv"
 	"log"
 	"os"
 	"strings"
@@ -23,7 +25,8 @@ type SellwireTransaction struct {
 	Date string
 	CustomerName string
 	Amount string
-	IsEU string
+	IsEU bool
+	IsPrivate bool
 	CountryCode string
 	TaxNumber string
 }
@@ -50,14 +53,25 @@ func main() {
 		}
 		timestamp := record[SELLWIRE_TRANSACTION_COLUMN_TIMESTAMP]
 		timestampParts := strings.Split(timestamp, " ")
+
+		countryCode := record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_COUNTRY_CODE]
+		taxNumber := record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX_NUMBER]
+
+		if taxNumber != "" && !strings.HasPrefix(taxNumber, countryCode) {
+			taxNumber = fmt.Sprintf("%s%s", countryCode, taxNumber)
+		}
+
+		isEU, _ := strconv.ParseBool(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_IS_EU])
+
 		sellwireRecord := SellwireTransaction{
 			TransactionId: record[SELLWIRE_TRANSACTION_COLUMN_TRANSACTION_ID],
 			Date: timestampParts[0],
 			CustomerName: record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_NAME],
 			Amount: record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_AMOUNT],
-			IsEU: record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_IS_EU],
-			CountryCode: record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_COUNTRY_CODE],
-			TaxNumber: record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX_NUMBER],
+			IsEU: isEU,
+			IsPrivate: taxNumber == "",
+			CountryCode: countryCode,
+			TaxNumber: taxNumber,
 		}
 
 		if !strings.HasPrefix(sellwireRecord.TransactionId, "ch_") {
@@ -70,13 +84,23 @@ func main() {
 	}
 
 	for _, tx := range paypalTransactions {
+		isEU := ""
+		if tx.IsEU {
+			isEU = "x"
+		}
+
+		isPrivate := ""
+		if tx.IsPrivate {
+			isPrivate = "x"
+		}
+
 		record := []string{
 			tx.Date,
 			tx.CustomerName,
 			tx.Amount,
 			tx.CountryCode,
-			tx.IsEU,
-			"todo",
+			isEU,
+			isPrivate,
 			tx.TaxNumber,
 		}
 		paypalOutput = append(paypalOutput, record)
