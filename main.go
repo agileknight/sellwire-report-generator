@@ -30,7 +30,7 @@ type SellwireTransaction struct {
 }
 
 func main() {
-	file, err := os.Open("SellwireOrders_All_23_Feb_2016_30_Sep_2016.csv")
+	file, err := os.Open("input/SellwireOrders_All_23_Feb_2016_30_Sep_2016.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
