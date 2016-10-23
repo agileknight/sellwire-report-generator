@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/csv"
-	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -63,7 +62,35 @@ func main() {
 
 		if !strings.HasPrefix(sellwireRecord.TransactionId, "ch_") {
 			paypalTransactions = append(paypalTransactions, sellwireRecord)
-			fmt.Print(sellwireRecord)
 		}
+	}
+
+	paypalOutput := [][]string{
+		{"Datum", "Kundenname", "Betrag USD", "EU", "Land", "Privat", "USt-ID"},
+	}
+
+	for _, tx := range paypalTransactions {
+		record := []string{
+			tx.Date,
+			tx.CustomerName,
+			tx.Amount,
+			tx.IsEU,
+			tx.CountryCode,
+			"todo",
+			tx.TaxNumber,
+		}
+		paypalOutput = append(paypalOutput, record)
+	}
+
+	outputFile, err := os.Create("output/Paypal.csv")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	w := csv.NewWriter(outputFile)
+	w.WriteAll(paypalOutput)
+
+	if err := w.Error(); err != nil {
+		log.Fatalln("error writing paypal output csv:", err)
 	}
 }
