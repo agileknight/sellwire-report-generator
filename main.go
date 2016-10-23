@@ -96,7 +96,7 @@ func importSellwireTransactions() {
 		}
 
 		countryCode := record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_COUNTRY_CODE]
-		taxNumber := record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX_NUMBER]
+		taxNumber := strings.ToUpper(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX_NUMBER])
 
 		if taxNumber != "" && !strings.HasPrefix(taxNumber, countryCode) {
 			taxNumber = fmt.Sprintf("%s%s", countryCode, taxNumber)
