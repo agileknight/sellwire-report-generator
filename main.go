@@ -60,7 +60,7 @@ func main() {
 
 	var transactions []SellwireTransaction
 
-	for _, record := range records {
+	for _, record := range records[1:] {
 		status := record[SELLWIRE_TRANSACTION_COLUMN_STATUS]
 		if status != "complete" {
 			// TODO do we need to handle refunded?
