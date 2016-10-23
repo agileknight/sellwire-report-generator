@@ -66,7 +66,7 @@ func main() {
 	}
 
 	paypalOutput := [][]string{
-		{"Datum", "Kundenname", "Betrag USD", "EU", "Land", "Privat", "USt-ID"},
+		{"Datum", "Kundenname", "Betrag USD", "Land", "EU", "Privat", "USt-ID"},
 	}
 
 	for _, tx := range paypalTransactions {
@@ -74,8 +74,8 @@ func main() {
 			tx.Date,
 			tx.CustomerName,
 			tx.Amount,
-			tx.IsEU,
 			tx.CountryCode,
+			tx.IsEU,
 			"todo",
 			tx.TaxNumber,
 		}
