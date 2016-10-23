@@ -21,6 +21,15 @@ const (
 	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_COUNTRY_CODE=10
 	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX_NUMBER=11
 	PAYPAL_DATE_OUTPUT_FORMAT = "02.01.2006"
+	STRIPE_TRANSFER_DATE_FORMAT = "2006-01-02 15:04"
+	STRIPE_TRANSFER_COLUMN_STATUS=3
+	STRIPE_TRANSFER_COLUMN_DATE=0
+	STRIPE_TRANSFER_COLUMN_TRANSFER_ID=1
+	STRIPE_TRANSFER_COLUMND_AMOUNT=5
+	STRIPE_PAYMENT_COLUMN_PAYMENT_ID=0
+	STRIPE_PAYMENT_COLUMN_TRANSFER_ID=45
+	STRIPE_PAYMENT_COLUMN_STATUS=12
+)
 
 type TransactionType string
 
@@ -46,11 +55,21 @@ type SellwireTransaction struct {
 	TaxNumber string
 }
 
+type StripeTransfer struct {
+	TransferId string
+	Date time.Time
+	Amount Amount
+	Status string
+}
+
 var transactions []SellwireTransaction
+var stripeTransfersByTransactionId map[string]StripeTransfer
 
 func main() {
 	importSellwireTransactions()
-	outputPaypalTransactions()	
+	importStripeTransferMap()
+	outputPaypalTransactions()
+	outputStripeTransactions()
 }
 
 func importSellwireTransactions() {
@@ -68,7 +87,6 @@ func importSellwireTransactions() {
 	for _, record := range records[1:] {
 		status := record[SELLWIRE_TRANSACTION_COLUMN_STATUS]
 		if status != "complete" {
-			// TODO do we need to handle refunded?
 			continue
 		}
 		timestampStr := record[SELLWIRE_TRANSACTION_COLUMN_TIMESTAMP]
@@ -131,6 +149,93 @@ func importSellwireTransactions() {
 	}
 }
 
+func importStripeTransferMap() {
+	stripeTransfersByTransferId := make(map[string]StripeTransfer)
+
+	stripeTransfersFile, err := os.Open("input/transfers.csv")
+	if err != nil {
+		log.Fatal(err)
+	}
+	r := csv.NewReader(stripeTransfersFile)
+
+	transferRecords, err := r.ReadAll()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, record := range transferRecords[1:] {
+		status := record[STRIPE_TRANSFER_COLUMN_STATUS]
+
+		dateStr := record[STRIPE_TRANSFER_COLUMN_DATE]
+		date, err := time.Parse(STRIPE_TRANSFER_DATE_FORMAT, dateStr)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		var amount Amount
+		amountStr := record[STRIPE_TRANSFER_COLUMND_AMOUNT]
+		amountStrStripped := strings.Replace(amountStr, ".", "", -1)
+		amountParts := strings.Split(amountStrStripped, ",")
+		if len(amountParts) > 2 {
+			log.Fatalf("Invalid amount found: %s", amountStr)
+		}
+		if len(amountParts) > 0 {
+			dollars, err := strconv.ParseInt(amountParts[0], 10, 64)
+			if err != nil {
+				log.Fatal(err)
+			}
+			amount.Dollars = dollars
+			if len(amountParts) > 1 {
+				cents, err  := strconv.ParseInt(amountParts[1], 10, 64)
+				if err != nil {
+					log.Fatal(err)
+				}
+				amount.Cents = cents
+			}
+		}
+
+		transferId := record[STRIPE_TRANSFER_COLUMN_TRANSFER_ID]
+
+		transferRecord := StripeTransfer{
+			TransferId: transferId,
+			Date: date,
+			Amount: amount,
+			Status: status,
+		}
+
+		stripeTransfersByTransferId[transferId] = transferRecord
+	}
+
+	stripePaymentsFile, err := os.Open("input/payments.csv")
+	if err != nil {
+		log.Fatal(err)
+	}
+	r2 := csv.NewReader(stripePaymentsFile)
+
+	paymentRecords, err := r2.ReadAll()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	stripeTransfersByTransactionId = make(map[string]StripeTransfer)
+
+	for _, record := range paymentRecords[1:] {
+		paymentId := record[STRIPE_PAYMENT_COLUMN_PAYMENT_ID]
+		transferId := record[STRIPE_PAYMENT_COLUMN_TRANSFER_ID]
+		status := record[STRIPE_PAYMENT_COLUMN_STATUS]
+
+		if status != "Paid" {
+			continue
+		}
+
+		transfer, ok := stripeTransfersByTransferId[transferId]
+		if !ok {
+			log.Fatalf("transfer id %s no transfer found for payment id %s", transferId, paymentId)
+		}
+		stripeTransfersByTransactionId[paymentId] = transfer
+	}
+}
+
 func outputPaypalTransactions() {
 	paypalOutput := [][]string{
 		{"Datum", "Kundenname", "Betrag USD", "Land", "EU", "Privat", "USt-ID"},
@@ -174,4 +279,9 @@ func outputPaypalTransactions() {
 	if err := w.Error(); err != nil {
 		log.Fatalln("error writing paypal output csv:", err)
 	}
+}
+
+func outputStripeTransactions() {
+	// TODO implement
+	fmt.Printf("%+v", stripeTransfersByTransactionId)
 }
