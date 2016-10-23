@@ -7,9 +7,11 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 )
 
 const (
+	SELLWIRE_TIMESTAMP_FORMAT = "2006-01-02 15:04:05"
 	SELLWIRE_TRANSACTION_COLUMN_STATUS=16
 	SELLWIRE_TRANSACTION_COLUMN_TRANSACTION_ID=2
 	SELLWIRE_TRANSACTION_COLUMN_TIMESTAMP=12
@@ -18,6 +20,7 @@ const (
 	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_IS_EU=9
 	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_COUNTRY_CODE=10
 	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX_NUMBER=11
+	PAYPAL_DATE_OUTPUT_FORMAT = "02.01.2006"
 )
 
 type Amount struct {
@@ -27,7 +30,7 @@ type Amount struct {
 
 type SellwireTransaction struct {
 	TransactionId string
-	Date string
+	Timestamp time.Time
 	CustomerName string
 	Amount Amount
 	IsEU bool
@@ -56,8 +59,11 @@ func main() {
 			// TODO do we need to handle refunded?
 			continue
 		}
-		timestamp := record[SELLWIRE_TRANSACTION_COLUMN_TIMESTAMP]
-		timestampParts := strings.Split(timestamp, " ")
+		timestampStr := record[SELLWIRE_TRANSACTION_COLUMN_TIMESTAMP]
+		timestamp, err := time.Parse(SELLWIRE_TIMESTAMP_FORMAT, timestampStr)
+		if err != nil {
+			log.Fatal(err)
+		}
 
 		countryCode := record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_COUNTRY_CODE]
 		taxNumber := record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX_NUMBER]
@@ -92,7 +98,7 @@ func main() {
 
 		sellwireRecord := SellwireTransaction{
 			TransactionId: record[SELLWIRE_TRANSACTION_COLUMN_TRANSACTION_ID],
-			Date: timestampParts[0],
+			Timestamp: timestamp,
 			CustomerName: strings.Title(strings.ToLower(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_NAME])),
 			Amount: amount,
 			IsEU: isEU,
@@ -122,7 +128,7 @@ func main() {
 		}
 
 		record := []string{
-			tx.Date,
+			tx.Timestamp.Format(PAYPAL_DATE_OUTPUT_FORMAT),
 			tx.CustomerName,
 			fmt.Sprintf("%d,%02d",tx.Amount.Dollars, tx.Amount.Cents),
 			tx.CountryCode,
