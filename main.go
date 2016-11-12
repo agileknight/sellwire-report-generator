@@ -143,7 +143,7 @@ func importSellwireTransactions() {
 			CustomerName: strings.Title(strings.ToLower(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_NAME])),
 			Amount: amount,
 			IsEU: isEU,
-			IsPrivate: taxNumber == "",
+			IsPrivate: isEU && taxNumber == "",
 			CountryCode: countryCode,
 			TaxNumber: taxNumber,
 		}
@@ -258,6 +258,9 @@ func outputPaypalTransactions() {
 		if tx.IsPrivate {
 			isPrivate = "x"
 		}
+		if !tx.IsEU {
+			isPrivate = "-"
+		}
 
 		record := []string{
 			tx.Timestamp.Format(PAYPAL_DATE_OUTPUT_FORMAT),
@@ -302,6 +305,9 @@ func outputStripeTransactions() {
 		isPrivate := ""
 		if tx.IsPrivate {
 			isPrivate = "x"
+		}
+		if !tx.IsEU {
+			isPrivate = "-"
 		}
 
 		transfer := stripeTransfersByTransactionId[tx.TransactionId]
