@@ -16,6 +16,7 @@ const (
 	SELLWIRE_TRANSACTION_COLUMN_TRANSACTION_ID=2
 	SELLWIRE_TRANSACTION_COLUMN_TIMESTAMP=12
 	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_NAME=3
+	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX=6
 	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_AMOUNT=7
 	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_IS_EU=9
 	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_COUNTRY_CODE=10
@@ -43,12 +44,32 @@ type Amount struct {
 	Cents int64
 }
 
+func (a Amount) ToStringGermany() string {
+	if a.Dollars == 0 && a.Cents == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d,%02d",a.Dollars, a.Cents)
+}
+
+// VAT % of total amount (including VAT)
+func (a Amount) VATPercentOfAsStringGermany(other Amount) string {
+	totalCentsA := a.Dollars * 100 + a.Cents
+	totalCentsB := other.Dollars * 100 + other.Cents - totalCentsA
+	percentage := float64(totalCentsA) * 100.0 / float64(totalCentsB)
+	percentageRounded := int64(percentage + 0.5)
+	if percentageRounded == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d%%", percentageRounded)
+}
+
 type SellwireTransaction struct {
 	TransactionType TransactionType
 	TransactionId string
 	Timestamp time.Time
 	CustomerName string
 	Amount Amount
+	TaxAmount Amount
 	IsEU bool
 	IsPrivate bool
 	CountryCode string
@@ -107,27 +128,8 @@ func importSellwireTransactions() {
 
 		isEU, _ := strconv.ParseBool(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_IS_EU])
 
-		var amount Amount
-		amountStr := record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_AMOUNT]
-		amountStrStripped := strings.Replace(amountStr, ",", "", -1)
-		amountParts := strings.Split(amountStrStripped, ".")
-		if len(amountParts) > 2 {
-			log.Fatalf("Invalid amount found: %s", amountStr)
-		}
-		if len(amountParts) > 0 {
-			dollars, err := strconv.ParseInt(amountParts[0], 10, 64)
-			if err != nil {
-				log.Fatal(err)
-			}
-			amount.Dollars = dollars
-			if len(amountParts) > 1 {
-				cents, err  := strconv.ParseInt(amountParts[1], 10, 64)
-				if err != nil {
-					log.Fatal(err)
-				}
-				amount.Cents = cents
-			}
-		}
+		amount := parseAmount(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_AMOUNT])
+		taxAmount := parseAmount(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX])
 
 		transactionId := record[SELLWIRE_TRANSACTION_COLUMN_TRANSACTION_ID]
 
@@ -142,6 +144,7 @@ func importSellwireTransactions() {
 			Timestamp: timestamp,
 			CustomerName: strings.Title(strings.ToLower(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_NAME])),
 			Amount: amount,
+			TaxAmount: taxAmount,
 			IsEU: isEU,
 			IsPrivate: isEU && taxNumber == "",
 			CountryCode: countryCode,
@@ -151,6 +154,33 @@ func importSellwireTransactions() {
 		transactions = append(transactions, sellwireRecord)
 	}
 }
+
+func parseAmount(amountStr string) Amount {
+			var amount Amount
+			amountStrStripped := strings.Replace(amountStr, ",", "", -1)
+			amountParts := strings.Split(amountStrStripped, ".")
+			if len(amountParts) > 2 {
+				log.Fatalf("Invalid amount found: %s", amountStr)
+			}
+			if len(amountParts) > 0 {
+				dollars, err := strconv.ParseInt(amountParts[0], 10, 64)
+				if err != nil {
+					log.Fatal(err)
+				}
+				amount.Dollars = dollars
+				if len(amountParts) > 1 {
+					cents, err  := strconv.ParseInt(amountParts[1], 10, 64)
+					if cents < 10 { // 9.8 is 9 dollar 80 cents and not 9 dollar 8 cents
+						cents *= 10
+					}
+					if err != nil {
+						log.Fatal(err)
+					}
+					amount.Cents = cents
+				}
+			}
+			return amount
+		}
 
 func importStripeTransferMap() {
 	stripeTransfersByTransferId := make(map[string]StripeTransfer)
@@ -241,7 +271,7 @@ func importStripeTransferMap() {
 
 func outputPaypalTransactions() {
 	paypalOutput := [][]string{
-		{"Datum", "Kundenname", "Betrag USD", "Land", "EU", "Privat", "USt-ID"},
+		{"Datum", "Kundenname", "Betrag USD", "VAT USD", "VAT", "Land", "EU", "Privat", "USt-ID"},
 	}
 
 	for _, tx := range transactions {
@@ -265,7 +295,9 @@ func outputPaypalTransactions() {
 		record := []string{
 			tx.Timestamp.Format(PAYPAL_DATE_OUTPUT_FORMAT),
 			tx.CustomerName,
-			fmt.Sprintf("%d,%02d",tx.Amount.Dollars, tx.Amount.Cents),
+			tx.Amount.ToStringGermany(),
+			tx.TaxAmount.ToStringGermany(),
+			tx.TaxAmount.VATPercentOfAsStringGermany(tx.Amount),
 			tx.CountryCode,
 			isEU,
 			isPrivate,
@@ -289,7 +321,7 @@ func outputPaypalTransactions() {
 
 func outputStripeTransactions() {
 	stripeOutput := [][]string{
-		{"Datum", "Kundenname", "Betrag USD", "Land", "EU", "Privat", "USt-ID", "Datum Transfer", "Gesamtbetrag Transfer EUR"},
+		{"Datum", "Kundenname", "Betrag USD", "VAT USD", "VAT", "Land", "EU", "Privat", "USt-ID", "Datum Transfer", "Gesamtbetrag Transfer EUR"},
 	}
 
 	for _, tx := range transactions {
@@ -315,13 +347,15 @@ func outputStripeTransactions() {
 		record := []string{
 			tx.Timestamp.Format(PAYPAL_DATE_OUTPUT_FORMAT),
 			tx.CustomerName,
-			fmt.Sprintf("%d,%02d",tx.Amount.Dollars, tx.Amount.Cents),
+			tx.Amount.ToStringGermany(),
+			tx.TaxAmount.ToStringGermany(),
+			tx.TaxAmount.VATPercentOfAsStringGermany(tx.Amount),
 			tx.CountryCode,
 			isEU,
 			isPrivate,
 			tx.TaxNumber,
 			transfer.Date.Format(PAYPAL_DATE_OUTPUT_FORMAT),
-			fmt.Sprintf("%d,%02d",transfer.Amount.Dollars, transfer.Amount.Cents),
+			transfer.Amount.ToStringGermany(),
 		}
 		stripeOutput = append(stripeOutput, record)
 	}
