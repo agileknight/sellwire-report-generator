@@ -96,6 +96,9 @@ func importSellwireTransactions() {
 		}
 
 		countryCode := record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_COUNTRY_CODE]
+		if countryCode == "" {
+			countryCode = "US"
+		}
 		taxNumber := strings.ToUpper(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX_NUMBER])
 
 		if taxNumber != "" && !strings.HasPrefix(taxNumber, countryCode) {
