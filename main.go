@@ -96,7 +96,7 @@ func main() {
 }
 
 func importSellwireTransactions() {
-	sellwireOrdersFile, err := os.Open("input/SellwireOrders_All_23_Feb_2016_30_Sep_2016.csv")
+	sellwireOrdersFile, err := os.Open("input/SellwireOrders.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
