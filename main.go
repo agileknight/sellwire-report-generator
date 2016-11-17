@@ -79,6 +79,7 @@ type SellwireTransaction struct {
 	IsPrivate bool
 	CountryCode string
 	TaxNumber string
+	IsRefund bool
 }
 
 type StripeTransfer struct {
@@ -114,7 +115,7 @@ func importSellwireTransactions() {
 
 	for _, record := range records[1:] {
 		status := record[SELLWIRE_TRANSACTION_COLUMN_STATUS]
-		if status != "complete" {
+		if status != "complete" && status != "refunded" {
 			continue
 		}
 		timestampStr := record[SELLWIRE_TRANSACTION_COLUMN_TIMESTAMP]
@@ -163,6 +164,7 @@ func importSellwireTransactions() {
 			IsPrivate: isEU && taxNumber == "",
 			CountryCode: countryCode,
 			TaxNumber: taxNumber,
+			IsRefund: status == "refunded",
 		}
 
 		transactions = append(transactions, sellwireRecord)
@@ -272,7 +274,7 @@ func importStripeTransferMap() {
 		status := record[STRIPE_PAYMENT_COLUMN_STATUS]
 		paymentDate := record[STRIPE_PAYMENT_COLUMN_PAYMENT_DATE]
 
-		if status != "Paid" {
+		if status != "Paid" && status != "Refunded" {
 			continue
 		}
 
@@ -305,7 +307,7 @@ func importVatCorrections() {
 
 func outputPaypalTransactions() {
 	paypalOutput := [][]string{
-		{"Datum", "Kundenname", "Betrag USD", "VAT USD", "VAT", "Land", "EU", "Privat", "USt-ID"},
+		{"Datum", "Kundenname", "Betrag USD", "VAT USD", "VAT", "Land", "EU", "Privat", "USt-ID", "Rückerstattet"},
 	}
 
 	for _, tx := range transactions {
@@ -326,6 +328,11 @@ func outputPaypalTransactions() {
 			isPrivate = "-"
 		}
 
+		isRefund := ""
+		if tx.IsRefund {
+			isRefund = "x"
+		}
+
 		record := []string{
 			tx.Timestamp.Format(PAYPAL_DATE_OUTPUT_FORMAT),
 			tx.CustomerName,
@@ -336,6 +343,7 @@ func outputPaypalTransactions() {
 			isEU,
 			isPrivate,
 			tx.TaxNumber,
+			isRefund,
 		}
 		paypalOutput = append(paypalOutput, record)
 	}
@@ -355,7 +363,7 @@ func outputPaypalTransactions() {
 
 func outputStripeTransactions() {
 	stripeOutput := [][]string{
-		{"Datum", "Kundenname", "Betrag USD", "VAT USD", "VAT", "Land", "EU", "Privat", "USt-ID", "Datum Transfer", "Gesamtbetrag Transfer EUR"},
+		{"Datum", "Kundenname", "Betrag USD", "VAT USD", "VAT", "Land", "EU", "Privat", "USt-ID", "Datum Transfer", "Gesamtbetrag Transfer EUR", "Rückerstattet"},
 	}
 
 	for _, tx := range transactions {
@@ -376,6 +384,12 @@ func outputStripeTransactions() {
 			isPrivate = "-"
 		}
 
+
+		isRefund := ""
+		if tx.IsRefund {
+			isRefund = "x"
+		}
+
 		transfer := stripeTransfersByTransactionId[tx.TransactionId]
 
 		record := []string{
@@ -390,6 +404,7 @@ func outputStripeTransactions() {
 			tx.TaxNumber,
 			transfer.Date.Format(PAYPAL_DATE_OUTPUT_FORMAT),
 			transfer.Amount.ToStringGermany(),
+			isRefund,
 		}
 		stripeOutput = append(stripeOutput, record)
 	}
