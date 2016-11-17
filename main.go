@@ -28,6 +28,7 @@ const (
 	STRIPE_TRANSFER_COLUMN_TRANSFER_ID=1
 	STRIPE_TRANSFER_COLUMND_AMOUNT=5
 	STRIPE_PAYMENT_COLUMN_PAYMENT_ID=0
+	STRIPE_PAYMENT_COLUMN_PAYMENT_DATE=2
 	STRIPE_PAYMENT_COLUMN_TRANSFER_ID=45
 	STRIPE_PAYMENT_COLUMN_STATUS=12
 )
@@ -269,6 +270,7 @@ func importStripeTransferMap() {
 		paymentId := record[STRIPE_PAYMENT_COLUMN_PAYMENT_ID]
 		transferId := record[STRIPE_PAYMENT_COLUMN_TRANSFER_ID]
 		status := record[STRIPE_PAYMENT_COLUMN_STATUS]
+		paymentDate := record[STRIPE_PAYMENT_COLUMN_PAYMENT_DATE]
 
 		if status != "Paid" {
 			continue
@@ -276,7 +278,7 @@ func importStripeTransferMap() {
 
 		transfer, ok := stripeTransfersByTransferId[transferId]
 		if !ok {
-			log.Fatalf("transfer id %s no transfer found for payment id %s", transferId, paymentId)
+			log.Printf("transfer id %s no transfer found for payment id %s from date %v", transferId, paymentId, paymentDate)
 		}
 		stripeTransfersByTransactionId[paymentId] = transfer
 	}
