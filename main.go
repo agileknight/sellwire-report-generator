@@ -85,8 +85,10 @@ type StripeTransfer struct {
 
 var transactions []SellwireTransaction
 var stripeTransfersByTransactionId map[string]StripeTransfer
+var vatCorrections map[string]string // from broken number to corrected number (including country prefix)
 
 func main() {
+	importVatCorrections()
 	importSellwireTransactions()
 	importStripeTransferMap()
 	outputPaypalTransactions()
@@ -124,6 +126,10 @@ func importSellwireTransactions() {
 
 		if taxNumber != "" && !strings.HasPrefix(taxNumber, countryCode) {
 			taxNumber = fmt.Sprintf("%s%s", countryCode, taxNumber)
+		}
+
+		if correction, ok := vatCorrections[taxNumber]; ok {
+			taxNumber = correction
 		}
 
 		isEU, _ := strconv.ParseBool(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_IS_EU])
@@ -266,6 +272,25 @@ func importStripeTransferMap() {
 			log.Fatalf("transfer id %s no transfer found for payment id %s", transferId, paymentId)
 		}
 		stripeTransfersByTransactionId[paymentId] = transfer
+	}
+}
+
+func importVatCorrections() {
+	vatCorrections = make(map[string]string)
+
+	correctionsFile, err := os.Open("input/vat_corrections.csv")
+	if err != nil {
+		log.Fatal(err)
+	}
+	r := csv.NewReader(correctionsFile)
+
+	corrections, err := r.ReadAll()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, record := range corrections {
+		vatCorrections[record[0]] = record[1]
 	}
 }
 
