@@ -44,6 +44,10 @@ type Amount struct {
 	Cents int64
 }
 
+func (a Amount) IsZero() bool {
+	return a.Dollars == 0 && a.Cents == 0
+}
+
 func (a Amount) ToStringGermany() string {
 	if a.Dollars == 0 && a.Cents == 0 {
 		return ""
@@ -144,6 +148,9 @@ func importSellwireTransactions() {
 			transactionType = TransactionTypeStripe
 		}
 
+		if amount.IsZero() {
+			continue
+		}
 		sellwireRecord := SellwireTransaction{
 			TransactionType: transactionType,
 			TransactionId: transactionId,
