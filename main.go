@@ -201,7 +201,7 @@ func parseAmount(amountStr string) Amount {
 func importStripeTransferMap() {
 	stripeTransfersByTransferId := make(map[string]StripeTransfer)
 
-	stripeTransfersFile, err := os.Open("input/transfers.csv")
+	stripeTransfersFile, err := os.Open("input/payouts.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
