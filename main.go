@@ -294,14 +294,18 @@ func importStripeTransferMap() {
 
 		transactionKey := transactionKeyFromCustomerIdAndTimestamp(customerId, paymentDate)
 		stripeTransfersByTransactionKey[transactionKey] = transfer
+		// we also put it in under the minute before and after that in case we exactly hit a minute boarder
+		transactionKeyMinuteBefore := transactionKeyFromCustomerIdAndTimestamp(customerId, paymentDate.Add(-1*time.Minute))
+		stripeTransfersByTransactionKey[transactionKeyMinuteBefore] = transfer
+		transactionKeyMinuteAfter := transactionKeyFromCustomerIdAndTimestamp(customerId, paymentDate.Add(time.Minute))
+		stripeTransfersByTransactionKey[transactionKeyMinuteAfter] = transfer
 	}
 }
 
 // payment id can currently not be used for lookup as edd does not export it
-// instead we use a combination of customer id and the timestamp rounded to the hour
-// (for now, can be improved later when problems occur)
+// instead we use a combination of customer id and the timestamp rounded to the minute
 func transactionKeyFromCustomerIdAndTimestamp(customerId string, timestamp time.Time) string {
-	return fmt.Sprintf("%s_%d", customerId, timestamp.Truncate(60*time.Minute).Unix())
+	return fmt.Sprintf("%s_%d", customerId, timestamp.Truncate(time.Minute).Unix())
 }
 
 func outputStripeTransactions(limitMonth, limitYear int) {
