@@ -3,43 +3,43 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
-	"strconv"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const (
-	EDD_TIMESTAMP_FORMAT = "2006-01-02 15:04:05"
-	EDD_PAYMENT_COLUMN_STATUS=25
-	EDD_PAYMENT_COLUMN_TIMESTAMP=20
-	EDD_PAYMENT_COLUMN_CUSTOMER_EMAIL=2
-	EDD_PAYMENT_COLUMN_CUSTOMER_FIRST_NAME=4
-	EDD_PAYMENT_COLUMN_CUSTOMER_LAST_NAME=5
-	EDD_PAYMENT_COLUMN_CUSTOMER_TAX=15
-	EDD_PAYMENT_COLUMN_CUSTOMER_AMOUNT=14
-	EDD_PAYMENT_COLUMN_CUSTOMER_COUNTRY_CODE=10
-	EDD_PAYMENT_COLUMN_CUSTOMER_TAX_NUMBER=27
-	EDD_PAYMENT_COLUMN_VAT_RATE=29
+	EDD_TIMESTAMP_FORMAT                     = "2006-01-02 15:04:05"
+	EDD_PAYMENT_COLUMN_STATUS                = 25
+	EDD_PAYMENT_COLUMN_TIMESTAMP             = 20
+	EDD_PAYMENT_COLUMN_CUSTOMER_EMAIL        = 2
+	EDD_PAYMENT_COLUMN_CUSTOMER_FIRST_NAME   = 4
+	EDD_PAYMENT_COLUMN_CUSTOMER_LAST_NAME    = 5
+	EDD_PAYMENT_COLUMN_CUSTOMER_TAX          = 15
+	EDD_PAYMENT_COLUMN_CUSTOMER_AMOUNT       = 14
+	EDD_PAYMENT_COLUMN_CUSTOMER_COUNTRY_CODE = 10
+	EDD_PAYMENT_COLUMN_CUSTOMER_TAX_NUMBER   = 27
+	EDD_PAYMENT_COLUMN_VAT_RATE              = 29
 
-	STRIPE_DATE_FORMAT = "2006-01-02 15:04"
-	STRIPE_TRANSFER_COLUMN_STATUS=3
-	STRIPE_TRANSFER_COLUMN_DATE=0
-	STRIPE_TRANSFER_COLUMN_TRANSFER_ID=1
-	STRIPE_TRANSFER_COLUMND_AMOUNT=5
-	STRIPE_PAYMENT_COLUMN_PAYMENT_ID=0
-	STRIPE_PAYMENT_COLUMN_PAYMENT_CUSTOMER_ID=15
-	STRIPE_PAYMENT_COLUMN_PAYMENT_DATE=2
-	STRIPE_PAYMENT_COLUMN_TRANSFER_ID=45
-	STRIPE_PAYMENT_COLUMN_STATUS=12
+	STRIPE_DATE_FORMAT                        = "2006-01-02 15:04"
+	STRIPE_TRANSFER_COLUMN_STATUS             = 3
+	STRIPE_TRANSFER_COLUMN_DATE               = 0
+	STRIPE_TRANSFER_COLUMN_TRANSFER_ID        = 1
+	STRIPE_TRANSFER_COLUMND_AMOUNT            = 5
+	STRIPE_PAYMENT_COLUMN_PAYMENT_ID          = 0
+	STRIPE_PAYMENT_COLUMN_PAYMENT_CUSTOMER_ID = 15
+	STRIPE_PAYMENT_COLUMN_PAYMENT_DATE        = 2
+	STRIPE_PAYMENT_COLUMN_TRANSFER_ID         = 45
+	STRIPE_PAYMENT_COLUMN_STATUS              = 12
 
 	REPORT_DATE_OUTPUT_FORMAT = "02.01.2006"
 )
 
 type Amount struct {
 	Dollars int64
-	Cents int64
+	Cents   int64
 }
 
 func (a Amount) IsZero() bool {
@@ -50,13 +50,13 @@ func (a Amount) ToStringGermany() string {
 	if a.Dollars == 0 && a.Cents == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%d,%02d",a.Dollars, a.Cents)
+	return fmt.Sprintf("%d,%02d", a.Dollars, a.Cents)
 }
 
 // VAT % of total amount (including VAT)
 func (a Amount) VATPercentOfAsStringGermany(other Amount) string {
-	totalCentsA := a.Dollars * 100 + a.Cents
-	totalCentsB := other.Dollars * 100 + other.Cents - totalCentsA
+	totalCentsA := a.Dollars*100 + a.Cents
+	totalCentsB := other.Dollars*100 + other.Cents - totalCentsA
 	percentage := float64(totalCentsA) * 100.0 / float64(totalCentsB)
 	percentageRounded := int64(percentage + 0.5)
 	if percentageRounded == 0 {
@@ -66,23 +66,23 @@ func (a Amount) VATPercentOfAsStringGermany(other Amount) string {
 }
 
 type EddPayment struct {
-	Timestamp time.Time
+	Timestamp     time.Time
 	CustomerEmail string
-	CustomerName string
-	Amount Amount
-	TaxAmount Amount
-	IsEU bool
-	IsPrivate bool
-	CountryCode string
-	TaxNumber string
-	IsRefund bool
+	CustomerName  string
+	Amount        Amount
+	TaxAmount     Amount
+	IsEU          bool
+	IsPrivate     bool
+	CountryCode   string
+	TaxNumber     string
+	IsRefund      bool
 }
 
 type StripeTransfer struct {
 	TransferId string
-	Date time.Time
-	Amount Amount
-	Status string
+	Date       time.Time
+	Amount     Amount
+	Status     string
 }
 
 var payments []EddPayment
@@ -91,7 +91,29 @@ var stripeTransfersByTransactionKey map[string]StripeTransfer
 func main() {
 	importEddPayments()
 	importStripeTransferMap()
-	outputStripeTransactions()
+
+	var limitMonth int64
+	var limitYear int64
+	var err error
+	if len(os.Args) == 2 {
+		limitYear, err = strconv.ParseInt(os.Args[1], 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		log.Printf("Limiting output to year %d", limitYear)
+	}
+	if len(os.Args) == 3 {
+		limitMonth, err = strconv.ParseInt(os.Args[1], 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		limitYear, err = strconv.ParseInt(os.Args[2], 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		log.Printf("Limiting output to month and year %d %d", limitMonth, limitYear)
+	}
+	outputStripeTransactions(int(limitMonth), int(limitYear))
 }
 
 func importEddPayments() {
@@ -137,16 +159,16 @@ func importEddPayments() {
 		}
 
 		eddPayment := EddPayment{
-			Timestamp: timestamp,
+			Timestamp:     timestamp,
 			CustomerEmail: customerEmail,
-			CustomerName: customerName,
-			Amount: amount,
-			TaxAmount: taxAmount,
-			IsEU: isEU,
-			IsPrivate: isPrivate,
-			CountryCode: countryCode,
-			TaxNumber: taxNumber,
-			IsRefund: isRefund,
+			CustomerName:  customerName,
+			Amount:        amount,
+			TaxAmount:     taxAmount,
+			IsEU:          isEU,
+			IsPrivate:     isPrivate,
+			CountryCode:   countryCode,
+			TaxNumber:     taxNumber,
+			IsRefund:      isRefund,
 		}
 
 		payments = append(payments, eddPayment)
@@ -154,31 +176,31 @@ func importEddPayments() {
 }
 
 func parseAmount(amountStr string) Amount {
-			var amount Amount
-			amountStrStripped := strings.Replace(amountStr, ",", "", -1)
-			amountParts := strings.Split(amountStrStripped, ".")
-			if len(amountParts) > 2 {
-				log.Fatalf("Invalid amount found: %s", amountStr)
-			}
-			if len(amountParts) > 0 {
-				dollars, err := strconv.ParseInt(amountParts[0], 10, 64)
-				if err != nil {
-					log.Fatal(err)
-				}
-				amount.Dollars = dollars
-				if len(amountParts) > 1 {
-					cents, err  := strconv.ParseInt(amountParts[1], 10, 64)
-					if cents < 10 { // 9.8 is 9 dollar 80 cents and not 9 dollar 8 cents
-						cents *= 10
-					}
-					if err != nil {
-						log.Fatal(err)
-					}
-					amount.Cents = cents
-				}
-			}
-			return amount
+	var amount Amount
+	amountStrStripped := strings.Replace(amountStr, ",", "", -1)
+	amountParts := strings.Split(amountStrStripped, ".")
+	if len(amountParts) > 2 {
+		log.Fatalf("Invalid amount found: %s", amountStr)
+	}
+	if len(amountParts) > 0 {
+		dollars, err := strconv.ParseInt(amountParts[0], 10, 64)
+		if err != nil {
+			log.Fatal(err)
 		}
+		amount.Dollars = dollars
+		if len(amountParts) > 1 {
+			cents, err := strconv.ParseInt(amountParts[1], 10, 64)
+			if cents < 10 { // 9.8 is 9 dollar 80 cents and not 9 dollar 8 cents
+				cents *= 10
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
+			amount.Cents = cents
+		}
+	}
+	return amount
+}
 
 func importStripeTransferMap() {
 	stripeTransfersByTransferId := make(map[string]StripeTransfer)
@@ -217,7 +239,7 @@ func importStripeTransferMap() {
 			}
 			amount.Dollars = dollars
 			if len(amountParts) > 1 {
-				cents, err  := strconv.ParseInt(amountParts[1], 10, 64)
+				cents, err := strconv.ParseInt(amountParts[1], 10, 64)
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -229,9 +251,9 @@ func importStripeTransferMap() {
 
 		transferRecord := StripeTransfer{
 			TransferId: transferId,
-			Date: date,
-			Amount: amount,
-			Status: status,
+			Date:       date,
+			Amount:     amount,
+			Status:     status,
 		}
 
 		stripeTransfersByTransferId[transferId] = transferRecord
@@ -271,7 +293,6 @@ func importStripeTransferMap() {
 		}
 
 		transactionKey := transactionKeyFromCustomerIdAndTimestamp(customerId, paymentDate)
-		log.Printf("Transaction key of payout: %v", transactionKey)
 		stripeTransfersByTransactionKey[transactionKey] = transfer
 	}
 }
@@ -280,10 +301,10 @@ func importStripeTransferMap() {
 // instead we use a combination of customer id and the timestamp rounded to the hour
 // (for now, can be improved later when problems occur)
 func transactionKeyFromCustomerIdAndTimestamp(customerId string, timestamp time.Time) string {
-	return fmt.Sprintf("%s_%d", customerId, timestamp.Truncate(60 * time.Minute).Unix())
+	return fmt.Sprintf("%s_%d", customerId, timestamp.Truncate(60*time.Minute).Unix())
 }
 
-func outputStripeTransactions() {
+func outputStripeTransactions(limitMonth, limitYear int) {
 	stripeOutput := [][]string{
 		{"Datum", "Kundenname", "Betrag USD", "VAT USD", "VAT", "Land", "EU", "Privat", "USt-ID", "Datum Transfer", "Gesamtbetrag Transfer EUR", "Rückerstattet"},
 	}
@@ -302,7 +323,6 @@ func outputStripeTransactions() {
 			isPrivate = "-"
 		}
 
-
 		isRefund := ""
 		if tx.IsRefund {
 			isRefund = "x"
@@ -310,10 +330,16 @@ func outputStripeTransactions() {
 
 		// use customer email as id because real id is just an internal number
 		transactionKey := transactionKeyFromCustomerIdAndTimestamp(tx.CustomerEmail, tx.Timestamp)
-		log.Printf("Transaction key of payment: %v", transactionKey)
 		transfer, ok := stripeTransfersByTransactionKey[transactionKey]
 		if !ok {
 			log.Printf("no transfer found for payment %+v", tx)
+			continue
+		}
+
+		if limitMonth > 0 && limitMonth != int(transfer.Date.Month()) {
+			continue
+		}
+		if limitYear > 0 && limitYear != transfer.Date.Year() {
 			continue
 		}
 
