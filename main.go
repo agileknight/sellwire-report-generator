@@ -11,33 +11,30 @@ import (
 )
 
 const (
-	SELLWIRE_TIMESTAMP_FORMAT = "2006-01-02 15:04:05"
-	SELLWIRE_TRANSACTION_COLUMN_STATUS=16
-	SELLWIRE_TRANSACTION_COLUMN_TRANSACTION_ID=2
-	SELLWIRE_TRANSACTION_COLUMN_TIMESTAMP=12
-	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_NAME=3
-	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX=6
-	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_AMOUNT=7
-	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_IS_EU=9
-	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_COUNTRY_CODE=10
-	SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX_NUMBER=11
-	PAYPAL_DATE_OUTPUT_FORMAT = "02.01.2006"
-	STRIPE_TRANSFER_DATE_FORMAT = "2006-01-02 15:04"
+	EDD_TIMESTAMP_FORMAT = "2006-01-02 15:04:05"
+	EDD_PAYMENT_COLUMN_STATUS=25
+	EDD_PAYMENT_COLUMN_TIMESTAMP=20
+	EDD_PAYMENT_COLUMN_CUSTOMER_EMAIL=2
+	EDD_PAYMENT_COLUMN_CUSTOMER_FIRST_NAME=4
+	EDD_PAYMENT_COLUMN_CUSTOMER_LAST_NAME=5
+	EDD_PAYMENT_COLUMN_CUSTOMER_TAX=15
+	EDD_PAYMENT_COLUMN_CUSTOMER_AMOUNT=14
+	EDD_PAYMENT_COLUMN_CUSTOMER_COUNTRY_CODE=10
+	EDD_PAYMENT_COLUMN_CUSTOMER_TAX_NUMBER=27
+	EDD_PAYMENT_COLUMN_VAT_RATE=29
+
+	STRIPE_DATE_FORMAT = "2006-01-02 15:04"
 	STRIPE_TRANSFER_COLUMN_STATUS=3
 	STRIPE_TRANSFER_COLUMN_DATE=0
 	STRIPE_TRANSFER_COLUMN_TRANSFER_ID=1
 	STRIPE_TRANSFER_COLUMND_AMOUNT=5
 	STRIPE_PAYMENT_COLUMN_PAYMENT_ID=0
+	STRIPE_PAYMENT_COLUMN_PAYMENT_CUSTOMER_ID=15
 	STRIPE_PAYMENT_COLUMN_PAYMENT_DATE=2
 	STRIPE_PAYMENT_COLUMN_TRANSFER_ID=45
 	STRIPE_PAYMENT_COLUMN_STATUS=12
-)
 
-type TransactionType string
-
-const (
-	TransactionTypePaypal TransactionType = "paypal"
-	TransactionTypeStripe TransactionType = "stripe"
+	REPORT_DATE_OUTPUT_FORMAT = "02.01.2006"
 )
 
 type Amount struct {
@@ -68,10 +65,9 @@ func (a Amount) VATPercentOfAsStringGermany(other Amount) string {
 	return fmt.Sprintf("%d%%", percentageRounded)
 }
 
-type SellwireTransaction struct {
-	TransactionType TransactionType
-	TransactionId string
+type EddPayment struct {
 	Timestamp time.Time
+	CustomerEmail string
 	CustomerName string
 	Amount Amount
 	TaxAmount Amount
@@ -89,24 +85,21 @@ type StripeTransfer struct {
 	Status string
 }
 
-var transactions []SellwireTransaction
-var stripeTransfersByTransactionId map[string]StripeTransfer
-var vatCorrections map[string]string // from broken number to corrected number (including country prefix)
+var payments []EddPayment
+var stripeTransfersByTransactionKey map[string]StripeTransfer
 
 func main() {
-	importVatCorrections()
-	importSellwireTransactions()
+	importEddPayments()
 	importStripeTransferMap()
-	outputPaypalTransactions()
 	outputStripeTransactions()
 }
 
-func importSellwireTransactions() {
-	sellwireOrdersFile, err := os.Open("input/SellwireOrders.csv")
+func importEddPayments() {
+	eddPaymentsFile, err := os.Open("input/edd-export-payments.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
-	r := csv.NewReader(sellwireOrdersFile)
+	r := csv.NewReader(eddPaymentsFile)
 
 	records, err := r.ReadAll()
 	if err != nil {
@@ -114,60 +107,49 @@ func importSellwireTransactions() {
 	}
 
 	for _, record := range records[1:] {
-		status := record[SELLWIRE_TRANSACTION_COLUMN_STATUS]
+		status := record[EDD_PAYMENT_COLUMN_STATUS]
 		if status != "complete" && status != "refunded" {
 			continue
 		}
-		timestampStr := record[SELLWIRE_TRANSACTION_COLUMN_TIMESTAMP]
-		timestamp, err := time.Parse(SELLWIRE_TIMESTAMP_FORMAT, timestampStr)
+
+		timestampStr := record[EDD_PAYMENT_COLUMN_TIMESTAMP]
+		timestamp, err := time.Parse(EDD_TIMESTAMP_FORMAT, timestampStr)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		countryCode := record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_COUNTRY_CODE]
-		if countryCode == "" {
-			countryCode = "US"
-		}
-		taxNumber := strings.ToUpper(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX_NUMBER])
+		customerEmail := record[EDD_PAYMENT_COLUMN_CUSTOMER_EMAIL]
 
-		if taxNumber != "" && !strings.HasPrefix(taxNumber, countryCode) {
-			taxNumber = fmt.Sprintf("%s%s", countryCode, taxNumber)
-		}
+		countryCode := record[EDD_PAYMENT_COLUMN_CUSTOMER_COUNTRY_CODE]
+		taxNumber := strings.ToUpper(record[EDD_PAYMENT_COLUMN_CUSTOMER_TAX_NUMBER])
+		isEU := record[EDD_PAYMENT_COLUMN_VAT_RATE] != "??"
+		isRefund := status == "refunded"
+		isPrivate := isEU && taxNumber == ""
 
-		if correction, ok := vatCorrections[taxNumber]; ok {
-			taxNumber = correction
-		}
+		amount := parseAmount(record[EDD_PAYMENT_COLUMN_CUSTOMER_AMOUNT])
+		taxAmount := parseAmount(record[EDD_PAYMENT_COLUMN_CUSTOMER_TAX])
 
-		isEU, _ := strconv.ParseBool(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_IS_EU])
-
-		amount := parseAmount(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_AMOUNT])
-		taxAmount := parseAmount(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_TAX])
-
-		transactionId := record[SELLWIRE_TRANSACTION_COLUMN_TRANSACTION_ID]
-
-		transactionType := TransactionTypePaypal
-		if strings.HasPrefix(transactionId, "ch_") {
-			transactionType = TransactionTypeStripe
+		customerFirstName := strings.Title(strings.ToLower(record[EDD_PAYMENT_COLUMN_CUSTOMER_FIRST_NAME]))
+		customerLastName := strings.Title(strings.ToLower(record[EDD_PAYMENT_COLUMN_CUSTOMER_LAST_NAME]))
+		customerName := customerFirstName
+		if customerLastName != "" {
+			customerName = customerName + " " + customerLastName
 		}
 
-		if amount.IsZero() {
-			continue
-		}
-		sellwireRecord := SellwireTransaction{
-			TransactionType: transactionType,
-			TransactionId: transactionId,
+		eddPayment := EddPayment{
 			Timestamp: timestamp,
-			CustomerName: strings.Title(strings.ToLower(record[SELLWIRE_TRANSACTION_COLUMN_CUSTOMER_NAME])),
+			CustomerEmail: customerEmail,
+			CustomerName: customerName,
 			Amount: amount,
 			TaxAmount: taxAmount,
 			IsEU: isEU,
-			IsPrivate: isEU && taxNumber == "",
+			IsPrivate: isPrivate,
 			CountryCode: countryCode,
 			TaxNumber: taxNumber,
-			IsRefund: status == "refunded",
+			IsRefund: isRefund,
 		}
 
-		transactions = append(transactions, sellwireRecord)
+		payments = append(payments, eddPayment)
 	}
 }
 
@@ -216,7 +198,7 @@ func importStripeTransferMap() {
 		status := record[STRIPE_TRANSFER_COLUMN_STATUS]
 
 		dateStr := record[STRIPE_TRANSFER_COLUMN_DATE]
-		date, err := time.Parse(STRIPE_TRANSFER_DATE_FORMAT, dateStr)
+		date, err := time.Parse(STRIPE_DATE_FORMAT, dateStr)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -266,13 +248,18 @@ func importStripeTransferMap() {
 		log.Fatal(err)
 	}
 
-	stripeTransfersByTransactionId = make(map[string]StripeTransfer)
+	stripeTransfersByTransactionKey = make(map[string]StripeTransfer)
 
 	for _, record := range paymentRecords[1:] {
 		paymentId := record[STRIPE_PAYMENT_COLUMN_PAYMENT_ID]
+		customerId := record[STRIPE_PAYMENT_COLUMN_PAYMENT_CUSTOMER_ID]
 		transferId := record[STRIPE_PAYMENT_COLUMN_TRANSFER_ID]
 		status := record[STRIPE_PAYMENT_COLUMN_STATUS]
-		paymentDate := record[STRIPE_PAYMENT_COLUMN_PAYMENT_DATE]
+		paymentDateStr := record[STRIPE_PAYMENT_COLUMN_PAYMENT_DATE]
+		paymentDate, err := time.Parse(STRIPE_DATE_FORMAT, paymentDateStr)
+		if err != nil {
+			log.Fatal(err)
+		}
 
 		if status != "Paid" && status != "Refunded" {
 			continue
@@ -282,83 +269,18 @@ func importStripeTransferMap() {
 		if !ok {
 			log.Printf("transfer id %s no transfer found for payment id %s from date %v", transferId, paymentId, paymentDate)
 		}
-		stripeTransfersByTransactionId[paymentId] = transfer
+
+		transactionKey := transactionKeyFromCustomerIdAndTimestamp(customerId, paymentDate)
+		log.Printf("Transaction key of payout: %v", transactionKey)
+		stripeTransfersByTransactionKey[transactionKey] = transfer
 	}
 }
 
-func importVatCorrections() {
-	vatCorrections = make(map[string]string)
-
-	correctionsFile, err := os.Open("input/vat_corrections.csv")
-	if err != nil {
-		log.Fatal(err)
-	}
-	r := csv.NewReader(correctionsFile)
-
-	corrections, err := r.ReadAll()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, record := range corrections {
-		vatCorrections[record[0]] = record[1]
-	}
-}
-
-func outputPaypalTransactions() {
-	paypalOutput := [][]string{
-		{"Datum", "Kundenname", "Betrag USD", "VAT USD", "VAT", "Land", "EU", "Privat", "USt-ID", "Rückerstattet"},
-	}
-
-	for _, tx := range transactions {
-		if tx.TransactionType != TransactionTypePaypal {
-			continue
-		}
-
-		isEU := ""
-		if tx.IsEU {
-			isEU = "x"
-		}
-
-		isPrivate := ""
-		if tx.IsPrivate {
-			isPrivate = "x"
-		}
-		if !tx.IsEU {
-			isPrivate = "-"
-		}
-
-		isRefund := ""
-		if tx.IsRefund {
-			isRefund = "x"
-		}
-
-		record := []string{
-			tx.Timestamp.Format(PAYPAL_DATE_OUTPUT_FORMAT),
-			tx.CustomerName,
-			tx.Amount.ToStringGermany(),
-			tx.TaxAmount.ToStringGermany(),
-			tx.TaxAmount.VATPercentOfAsStringGermany(tx.Amount),
-			tx.CountryCode,
-			isEU,
-			isPrivate,
-			tx.TaxNumber,
-			isRefund,
-		}
-		paypalOutput = append(paypalOutput, record)
-	}
-
-	outputFile, err := os.Create("output/Paypal.csv")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	w := csv.NewWriter(outputFile)
-	w.WriteAll(paypalOutput)
-
-	if err := w.Error(); err != nil {
-		log.Fatalln("error writing paypal output csv: %v", err)
-	}
+// payment id can currently not be used for lookup as edd does not export it
+// instead we use a combination of customer id and the timestamp rounded to the hour
+// (for now, can be improved later when problems occur)
+func transactionKeyFromCustomerIdAndTimestamp(customerId string, timestamp time.Time) string {
+	return fmt.Sprintf("%s_%d", customerId, timestamp.Truncate(60 * time.Minute).Unix())
 }
 
 func outputStripeTransactions() {
@@ -366,11 +288,7 @@ func outputStripeTransactions() {
 		{"Datum", "Kundenname", "Betrag USD", "VAT USD", "VAT", "Land", "EU", "Privat", "USt-ID", "Datum Transfer", "Gesamtbetrag Transfer EUR", "Rückerstattet"},
 	}
 
-	for _, tx := range transactions {
-		if tx.TransactionType != TransactionTypeStripe {
-			continue
-		}
-
+	for _, tx := range payments {
 		isEU := ""
 		if tx.IsEU {
 			isEU = "x"
@@ -390,10 +308,17 @@ func outputStripeTransactions() {
 			isRefund = "x"
 		}
 
-		transfer := stripeTransfersByTransactionId[tx.TransactionId]
+		// use customer email as id because real id is just an internal number
+		transactionKey := transactionKeyFromCustomerIdAndTimestamp(tx.CustomerEmail, tx.Timestamp)
+		log.Printf("Transaction key of payment: %v", transactionKey)
+		transfer, ok := stripeTransfersByTransactionKey[transactionKey]
+		if !ok {
+			log.Printf("no transfer found for payment %+v", tx)
+			continue
+		}
 
 		record := []string{
-			tx.Timestamp.Format(PAYPAL_DATE_OUTPUT_FORMAT),
+			tx.Timestamp.Format(REPORT_DATE_OUTPUT_FORMAT),
 			tx.CustomerName,
 			tx.Amount.ToStringGermany(),
 			tx.TaxAmount.ToStringGermany(),
@@ -402,7 +327,7 @@ func outputStripeTransactions() {
 			isEU,
 			isPrivate,
 			tx.TaxNumber,
-			transfer.Date.Format(PAYPAL_DATE_OUTPUT_FORMAT),
+			transfer.Date.Format(REPORT_DATE_OUTPUT_FORMAT),
 			transfer.Amount.ToStringGermany(),
 			isRefund,
 		}
