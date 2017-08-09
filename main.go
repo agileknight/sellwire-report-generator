@@ -12,6 +12,7 @@ import (
 
 const (
 	EDD_TIMESTAMP_FORMAT                     = "2006-01-02 15:04:05"
+	EDD_PAYMENT_COLUMN_PAYMENT_METHOD        = 17
 	EDD_PAYMENT_COLUMN_STATUS                = 25
 	EDD_PAYMENT_COLUMN_TIMESTAMP             = 20
 	EDD_PAYMENT_COLUMN_CUSTOMER_EMAIL        = 2
@@ -24,10 +25,10 @@ const (
 	EDD_PAYMENT_COLUMN_VAT_RATE              = 29
 
 	STRIPE_DATE_FORMAT                        = "2006-01-02 15:04"
-	STRIPE_TRANSFER_COLUMN_STATUS             = 3
-	STRIPE_TRANSFER_COLUMN_DATE               = 0
-	STRIPE_TRANSFER_COLUMN_TRANSFER_ID        = 1
-	STRIPE_TRANSFER_COLUMND_AMOUNT            = 5
+	STRIPE_TRANSFER_COLUMN_STATUS             = 8
+	STRIPE_TRANSFER_COLUMN_DATE               = 5
+	STRIPE_TRANSFER_COLUMN_TRANSFER_ID        = 0
+	STRIPE_TRANSFER_COLUMND_AMOUNT            = 1
 	STRIPE_PAYMENT_COLUMN_PAYMENT_ID          = 0
 	STRIPE_PAYMENT_COLUMN_PAYMENT_CUSTOMER_ID = 15
 	STRIPE_PAYMENT_COLUMN_PAYMENT_DATE        = 2
@@ -66,6 +67,7 @@ func (a Amount) VATPercentOfAsStringGermany(other Amount) string {
 }
 
 type EddPayment struct {
+	PaymentMethod string
 	Timestamp     time.Time
 	CustomerEmail string
 	CustomerName  string
@@ -129,6 +131,8 @@ func importEddPayments() {
 	}
 
 	for _, record := range records[1:] {
+		paymentMethod := record[EDD_PAYMENT_COLUMN_PAYMENT_METHOD]
+
 		status := record[EDD_PAYMENT_COLUMN_STATUS]
 		if status != "complete" && status != "refunded" {
 			continue
@@ -159,6 +163,7 @@ func importEddPayments() {
 		}
 
 		eddPayment := EddPayment{
+			PaymentMethod: paymentMethod,
 			Timestamp:     timestamp,
 			CustomerEmail: customerEmail,
 			CustomerName:  customerName,
@@ -314,6 +319,11 @@ func outputStripeTransactions(limitMonth, limitYear int) {
 	}
 
 	for _, tx := range payments {
+		if tx.PaymentMethod != "Stripe" {
+			log.Printf("found Paypal\n")
+			continue
+		}
+
 		isEU := ""
 		if tx.IsEU {
 			isEU = "x"
