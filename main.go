@@ -116,6 +116,7 @@ func main() {
 		log.Printf("Limiting output to month and year %d %d", limitMonth, limitYear)
 	}
 	outputStripeTransactions(int(limitMonth), int(limitYear))
+	outputPaypalTransactions(int(limitMonth), int(limitYear))
 }
 
 func importEddPayments() {
@@ -320,7 +321,6 @@ func outputStripeTransactions(limitMonth, limitYear int) {
 
 	for _, tx := range payments {
 		if tx.PaymentMethod != "Stripe" {
-			log.Printf("found Paypal\n")
 			continue
 		}
 
@@ -384,5 +384,68 @@ func outputStripeTransactions(limitMonth, limitYear int) {
 
 	if err := w.Error(); err != nil {
 		log.Fatalln("error writing stripe output csv: %v", err)
+	}
+}
+
+func outputPaypalTransactions(limitMonth, limitYear int) {
+	paypalOutput := [][]string{
+		{"Datum", "Kundenname", "Betrag USD", "VAT USD", "VAT", "Land", "EU", "Privat", "USt-ID", "Rückerstattet"},
+	}
+
+	for _, tx := range payments {
+		if tx.PaymentMethod != "PayPal Standard" {
+			continue
+		}
+
+		isEU := ""
+		if tx.IsEU {
+			isEU = "x"
+		}
+
+		isPrivate := ""
+		if tx.IsPrivate {
+			isPrivate = "x"
+		}
+		if !tx.IsEU {
+			isPrivate = "-"
+		}
+
+		isRefund := ""
+		if tx.IsRefund {
+			isRefund = "x"
+		}
+
+		if limitMonth > 0 && limitMonth != int(tx.Timestamp.Month()) {
+			continue
+		}
+		if limitYear > 0 && limitYear != tx.Timestamp.Year() {
+			continue
+		}
+
+		record := []string{
+			tx.Timestamp.Format(REPORT_DATE_OUTPUT_FORMAT),
+			tx.CustomerName,
+			tx.Amount.ToStringGermany(),
+			tx.TaxAmount.ToStringGermany(),
+			tx.TaxAmount.VATPercentOfAsStringGermany(tx.Amount),
+			tx.CountryCode,
+			isEU,
+			isPrivate,
+			tx.TaxNumber,
+			isRefund,
+		}
+		paypalOutput = append(paypalOutput, record)
+	}
+
+	outputFile, err := os.Create("output/Paypal.csv")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	w := csv.NewWriter(outputFile)
+	w.WriteAll(paypalOutput)
+
+	if err := w.Error(); err != nil {
+		log.Fatalln("error writing paypal output csv: %v", err)
 	}
 }
