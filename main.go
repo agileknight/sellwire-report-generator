@@ -316,7 +316,7 @@ func transactionKeyFromCustomerIdAndTimestamp(customerId string, timestamp time.
 
 func outputStripeTransactions(limitMonth, limitYear int) {
 	stripeOutput := [][]string{
-		{"Datum", "Kundenname", "Betrag USD", "VAT USD", "VAT", "Land", "EU", "Privat", "USt-ID", "Datum Transfer", "Gesamtbetrag Transfer EUR", "Rückerstattet"},
+		{"Datum", "Kundenname", "USD", "VAT", "%", "Land", "EU", "Privat", "USt-ID", "Transfer", "EUR", "Rückerst"},
 	}
 
 	for _, tx := range payments {
@@ -389,7 +389,7 @@ func outputStripeTransactions(limitMonth, limitYear int) {
 
 func outputPaypalTransactions(limitMonth, limitYear int) {
 	paypalOutput := [][]string{
-		{"Datum", "Kundenname", "Betrag USD", "VAT USD", "VAT", "Land", "EU", "Privat", "USt-ID", "Rückerstattet"},
+		{"Datum", "Kundenname", "USD", "VAT", "%", "Land", "EU", "Privat", "USt-ID", "Rückerst"},
 	}
 
 	for _, tx := range payments {
