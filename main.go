@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"encoding/json"
+	"net/http"
 )
 
 const (
@@ -23,6 +25,7 @@ const (
 	EDD_PAYMENT_COLUMN_CUSTOMER_COUNTRY_CODE = 10
 	EDD_PAYMENT_COLUMN_CUSTOMER_TAX_NUMBER   = 27
 	EDD_PAYMENT_COLUMN_VAT_RATE              = 29
+	EDD_PAYMENT_COLUMN_IP_ADDRESS            = 26
 
 	STRIPE_DATE_FORMAT                        = "2006-01-02 15:04"
 	STRIPE_TRANSFER_COLUMN_STATUS             = 8
@@ -87,6 +90,10 @@ type StripeTransfer struct {
 	Status     string
 }
 
+type GeoIpInfo struct {
+	CountryCode               string   `json:"country"`
+}
+
 var payments []EddPayment
 var stripeTransfersByTransactionKey map[string]StripeTransfer
 
@@ -119,6 +126,28 @@ func main() {
 	outputPaypalTransactions(int(limitMonth), int(limitYear))
 }
 
+func resolveIpAddressToCountryCode(ipAddress, customerEmail string, timestamp time.Time) string {
+	url := fmt.Sprintf("https://ipinfo.io/%s/json", ipAddress)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Fatal("NewRequest: ", err)
+	}
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatal("Do: ", err)
+	}
+	defer resp.Body.Close()
+
+	var record GeoIpInfo
+	if err := json.NewDecoder(resp.Body).Decode(&record); err != nil {
+		log.Fatal("Decode: ", err)
+	}
+
+	log.Printf("Looked up country code %v from IP address: %s for transaction %v %v \n", record.CountryCode, ipAddress, customerEmail, timestamp)
+	return record.CountryCode
+}
+
 func importEddPayments() {
 	eddPaymentsFile, err := os.Open("input/edd-export-payments.csv")
 	if err != nil {
@@ -145,16 +174,28 @@ func importEddPayments() {
 			log.Fatal(err)
 		}
 
+		amount := parseAmount(record[EDD_PAYMENT_COLUMN_CUSTOMER_AMOUNT])
+		taxAmount := parseAmount(record[EDD_PAYMENT_COLUMN_CUSTOMER_TAX])
+
 		customerEmail := record[EDD_PAYMENT_COLUMN_CUSTOMER_EMAIL]
 
 		countryCode := record[EDD_PAYMENT_COLUMN_CUSTOMER_COUNTRY_CODE]
 		taxNumber := strings.ToUpper(record[EDD_PAYMENT_COLUMN_CUSTOMER_TAX_NUMBER])
+
 		isEU := record[EDD_PAYMENT_COLUMN_VAT_RATE] != "??"
+		// special handling of ip-only-vat
+		if record[EDD_PAYMENT_COLUMN_VAT_RATE] == "??" && !taxAmount.IsZero() {
+			ipAddress := record[EDD_PAYMENT_COLUMN_IP_ADDRESS]
+			lookedUpCountryCode := resolveIpAddressToCountryCode(ipAddress, customerEmail, timestamp)
+			if lookedUpCountryCode != countryCode {
+				log.Printf("Changed from billing country %v to %v", countryCode, lookedUpCountryCode)
+				countryCode = lookedUpCountryCode
+			}
+			isEU = true
+		}
+
 		isRefund := status == "refunded"
 		isPrivate := isEU && taxNumber == ""
-
-		amount := parseAmount(record[EDD_PAYMENT_COLUMN_CUSTOMER_AMOUNT])
-		taxAmount := parseAmount(record[EDD_PAYMENT_COLUMN_CUSTOMER_TAX])
 
 		customerFirstName := strings.Title(strings.ToLower(record[EDD_PAYMENT_COLUMN_CUSTOMER_FIRST_NAME]))
 		customerLastName := strings.Title(strings.ToLower(record[EDD_PAYMENT_COLUMN_CUSTOMER_LAST_NAME]))
