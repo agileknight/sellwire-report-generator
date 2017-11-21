@@ -23,9 +23,9 @@ const (
 	EDD_PAYMENT_COLUMN_CUSTOMER_TAX          = 15
 	EDD_PAYMENT_COLUMN_CUSTOMER_AMOUNT       = 14
 	EDD_PAYMENT_COLUMN_CUSTOMER_COUNTRY_CODE = 10
-	EDD_PAYMENT_COLUMN_CUSTOMER_TAX_NUMBER   = 27
-	EDD_PAYMENT_COLUMN_VAT_RATE              = 29
-	EDD_PAYMENT_COLUMN_IP_ADDRESS            = 26
+	EDD_PAYMENT_COLUMN_CUSTOMER_TAX_NUMBER   = 28
+	EDD_PAYMENT_COLUMN_VAT_RATE              = 30
+	EDD_PAYMENT_COLUMN_IP_ADDRESS            = 27
 
 	STRIPE_DATE_FORMAT                        = "2006-01-02 15:04"
 	STRIPE_TRANSFER_COLUMN_STATUS             = 8
@@ -182,7 +182,8 @@ func importEddPayments() {
 		countryCode := record[EDD_PAYMENT_COLUMN_CUSTOMER_COUNTRY_CODE]
 		taxNumber := strings.ToUpper(record[EDD_PAYMENT_COLUMN_CUSTOMER_TAX_NUMBER])
 
-		isEU := record[EDD_PAYMENT_COLUMN_VAT_RATE] != "??"
+		isEU := !taxAmount.IsZero() || taxNumber != ""
+
 		// special handling of ip-only-vat
 		if record[EDD_PAYMENT_COLUMN_VAT_RATE] == "??" && !taxAmount.IsZero() {
 			ipAddress := record[EDD_PAYMENT_COLUMN_IP_ADDRESS]
@@ -191,7 +192,6 @@ func importEddPayments() {
 				log.Printf("Changed from billing country %v to %v", countryCode, lookedUpCountryCode)
 				countryCode = lookedUpCountryCode
 			}
-			isEU = true
 		}
 
 		isRefund := status == "refunded"
