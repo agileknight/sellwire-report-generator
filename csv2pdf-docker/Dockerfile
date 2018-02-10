@@ -16,3 +16,5 @@ RUN cpanm Text::CSV
 RUN cpanm Template
 RUN cpanm LaTeX::Table
 RUN cpanm LaTeX::Encode
+
+RUN fmtutil-sys --all
