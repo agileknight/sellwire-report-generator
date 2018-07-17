@@ -168,7 +168,7 @@ func importEddPayments() {
 		paymentMethod := record[EDD_PAYMENT_COLUMN_PAYMENT_METHOD]
 
 		status := record[EDD_PAYMENT_COLUMN_STATUS]
-		if status != "complete" && status != "refunded" {
+		if status != "complete" && status != "refunded" && status != "edd_subscription" {
 			continue
 		}
 
