@@ -30,17 +30,17 @@ const (
 	STRIPE_DATE_FORMAT                        = "2006-01-02 15:04"
 
 	// payouts.csv
-	STRIPE_TRANSFER_COLUMN_STATUS             = 8 // Status
-	STRIPE_TRANSFER_COLUMN_DATE               = 5 // Arrival Date (UTC)
-	STRIPE_TRANSFER_COLUMN_TRANSFER_ID        = 0 // id
-	STRIPE_TRANSFER_COLUMND_AMOUNT            = 1 // Amount
+	STRIPE_TRANSFER_COLUMN_STATUS             = "Status"
+	STRIPE_TRANSFER_COLUMN_DATE               = "Arrival Date (UTC)"
+	STRIPE_TRANSFER_COLUMN_TRANSFER_ID        = "id"
+	STRIPE_TRANSFER_COLUMND_AMOUNT            = "Amount"
 
 	// payments.csv
-	STRIPE_PAYMENT_COLUMN_PAYMENT_ID          = 0 // id
-	STRIPE_PAYMENT_COLUMN_PAYMENT_CUSTOMER_ID = 17 // Customer Email
-	STRIPE_PAYMENT_COLUMN_PAYMENT_DATE        = 3 // Created (UTC)
-	STRIPE_PAYMENT_COLUMN_TRANSFER_ID         = 46 // Transfer
-	STRIPE_PAYMENT_COLUMN_STATUS              = 13 // Status
+	STRIPE_PAYMENT_COLUMN_PAYMENT_ID          = "id"
+	STRIPE_PAYMENT_COLUMN_PAYMENT_CUSTOMER_ID = "Customer Email"
+	STRIPE_PAYMENT_COLUMN_PAYMENT_DATE        = "Created (UTC)"
+	STRIPE_PAYMENT_COLUMN_TRANSFER_ID         = "Transfer"
+	STRIPE_PAYMENT_COLUMN_STATUS              = "Status"
 
 	REPORT_DATE_OUTPUT_FORMAT = "02.01.2006"
 )
@@ -253,6 +253,14 @@ func parseAmount(amountStr string) Amount {
 	return amount
 }
 
+func getColumn(columnName string, nameMapping map[string]int, columns []string ) string {
+	columnIndex, ok := nameMapping[columnName]
+	if !ok {
+		panic("unknown column name: " + columnName)
+	}
+	return columns[columnIndex]
+}
+
 func importStripeTransferMap() {
 	stripeTransfersByTransferId := make(map[string]StripeTransfer)
 
@@ -267,17 +275,22 @@ func importStripeTransferMap() {
 		log.Fatal(err)
 	}
 
-	for _, record := range transferRecords[1:] {
-		status := record[STRIPE_TRANSFER_COLUMN_STATUS]
+	transferColumnIndexByName := make(map[string]int)
+	for index, columnName := range transferRecords[0] {
+		transferColumnIndexByName[columnName] = index
+	}
 
-		dateStr := record[STRIPE_TRANSFER_COLUMN_DATE]
+	for _, record := range transferRecords[1:] {
+		status := getColumn(STRIPE_TRANSFER_COLUMN_STATUS, transferColumnIndexByName, record)
+
+		dateStr := getColumn(STRIPE_TRANSFER_COLUMN_DATE, transferColumnIndexByName, record)
 		date, err := time.Parse(STRIPE_DATE_FORMAT, dateStr)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		var amount Amount
-		amountStr := record[STRIPE_TRANSFER_COLUMND_AMOUNT]
+		amountStr := getColumn(STRIPE_TRANSFER_COLUMND_AMOUNT, transferColumnIndexByName, record)
 		amountStrStripped := strings.Replace(amountStr, ".", "", -1)
 		amountParts := strings.Split(amountStrStripped, ",")
 		if len(amountParts) > 2 {
@@ -298,7 +311,7 @@ func importStripeTransferMap() {
 			}
 		}
 
-		transferId := record[STRIPE_TRANSFER_COLUMN_TRANSFER_ID]
+		transferId := getColumn(STRIPE_TRANSFER_COLUMN_TRANSFER_ID, transferColumnIndexByName, record)
 
 		transferRecord := StripeTransfer{
 			TransferId: transferId,
@@ -323,12 +336,17 @@ func importStripeTransferMap() {
 
 	stripeTransfersByTransactionKey = make(map[string]StripeTransfer)
 
+	paymentColumnIndexByName := make(map[string]int)
+	for index, columnName := range paymentRecords[0] {
+		paymentColumnIndexByName[columnName] = index
+	}
+
 	for _, record := range paymentRecords[1:] {
-		paymentId := record[STRIPE_PAYMENT_COLUMN_PAYMENT_ID]
-		customerId := record[STRIPE_PAYMENT_COLUMN_PAYMENT_CUSTOMER_ID]
-		transferId := record[STRIPE_PAYMENT_COLUMN_TRANSFER_ID]
-		status := record[STRIPE_PAYMENT_COLUMN_STATUS]
-		paymentDateStr := record[STRIPE_PAYMENT_COLUMN_PAYMENT_DATE]
+		paymentId := getColumn(STRIPE_PAYMENT_COLUMN_PAYMENT_ID, paymentColumnIndexByName, record)
+		customerId := getColumn(STRIPE_PAYMENT_COLUMN_PAYMENT_CUSTOMER_ID, paymentColumnIndexByName, record)
+		transferId := getColumn(STRIPE_PAYMENT_COLUMN_TRANSFER_ID, paymentColumnIndexByName, record)
+		status := getColumn(STRIPE_PAYMENT_COLUMN_STATUS, paymentColumnIndexByName, record)
+		paymentDateStr := getColumn(STRIPE_PAYMENT_COLUMN_PAYMENT_DATE, paymentColumnIndexByName, record)
 		paymentDate, err := time.Parse(STRIPE_DATE_FORMAT, paymentDateStr)
 		if err != nil {
 			log.Fatal(err)
