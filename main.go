@@ -183,6 +183,13 @@ func importEddPayments() {
 
 		customerEmail := record[EDD_PAYMENT_COLUMN_CUSTOMER_EMAIL]
 
+		customerSpecialTaxRates := map[string]Amount{
+			"martin@tradenet.nl": Amount{10,29}, // TODO lookup from all payments
+		}
+		if taxAmount.IsZero() {
+			taxAmount = customerSpecialTaxRates[customerEmail]
+		}
+
 		countryCode := record[EDD_PAYMENT_COLUMN_CUSTOMER_COUNTRY_CODE]
 		taxNumber := strings.ToUpper(record[EDD_PAYMENT_COLUMN_CUSTOMER_TAX_NUMBER])
 
